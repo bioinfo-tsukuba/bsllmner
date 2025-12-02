@@ -12,7 +12,7 @@ from openai import OpenAI
 
 
 class BsLlmProcess:
-    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url="", server="ollama"):
+    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url="", server="ollama", output_handle=None):
         self.bs_json = bs_json
         self.model = model
         self.prompt_indices = prompt_indices
@@ -28,6 +28,7 @@ class BsLlmProcess:
         else:
             print("Error: Invalid server: ", server, file=sys.stderr)
             exit(1)
+        self.out = output_handle if output_handle else sys.stdout
         return
 
     def load_prompt(self, prompt_filename):
@@ -93,8 +94,8 @@ class BsLlmProcess:
 
 
 class BsNer(BsLlmProcess):
-    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url, server):
-        super().__init__(bs_json, model, prompt_filename, prompt_indices, host_url, server)
+    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url, server, output_handle):
+        super().__init__(bs_json, model, prompt_filename, prompt_indices, host_url, server, output_handle)
         return
 
     def construct_output_json(self, n, res_text):
@@ -145,13 +146,57 @@ class BsNer(BsLlmProcess):
 
             output_json = self.construct_output_json(i, res_text)
 
-            print(json.dumps(output_json, sort_keys=True))
+            print(json.dumps(output_json, sort_keys=True), file=self.out)
+        return
+
+
+class BsAll(BsLlmProcess):
+    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url, server, output_handle):
+        # prompt_indices は無視し、YAML 内の全タスクを実行対象とする
+        super().__init__(bs_json, model, prompt_filename, prompt_indices or [], host_url, server, output_handle)
+        # 数値キーを昇順に並べる（数値以外は文字列順）
+        self.prompt_indices = sorted(
+            self.prompts.keys(),
+            key=lambda x: int(x) if str(x).isdigit() else str(x)
+        )
+        return
+
+    def run_all(self, verbose=False, test=False):
+        to = 10 if test else len(self.llm_input_json)
+        for i in range(0, to):
+            bs_id = self.bs_json[i]["accession"]
+            sample_input = json.dumps(self.llm_input_json[i], indent=2)
+            outputs = {}
+
+            for idx in self.prompt_indices:
+                messages = [{
+                    "role": self.prompts[idx]["role"],
+                    "content": self.prompts[idx]["text"] + sample_input
+                }]
+                options = {"temperature": 0}
+                if self.server == "ollama":
+                    if self.host_url == "":
+                        response = ollama.chat(model=self.model, messages=messages, options=options)
+                    else:
+                        response = self.client.chat(model=self.model, messages=messages, options=options)
+                    res_text = response["message"]["content"]
+                else:
+                    response = self.client.chat.completions.create(model=self.model, messages=messages, temperature=0)
+                    res_text = response.choices[0].message.content
+
+                res_json = extract_last_json(res_text)
+                outputs[idx] = {
+                    "output": "Error: no json" if res_json == "" else json.loads(res_json),
+                    "output_full": res_text
+                }
+
+            print(json.dumps({"accession": bs_id, "outputs": outputs}, sort_keys=True), file=self.out)
         return
 
 
 class BsSelect(BsLlmProcess):
-    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url, metasra_tsv, llmner_json, server):
-        super().__init__(bs_json, model, prompt_filename, prompt_indices, host_url, server)
+    def __init__(self, bs_json, model, prompt_filename, prompt_indices, host_url, metasra_tsv, llmner_json, server, output_handle):
+        super().__init__(bs_json, model, prompt_filename, prompt_indices, host_url, server, output_handle)
         self.metasra_tsv = metasra_tsv
         # self.llmner_tsv = llmner_tsv
         # self.llmner_dict =  self.parse_llmner_tsv()
