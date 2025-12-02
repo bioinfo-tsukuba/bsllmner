@@ -14,7 +14,9 @@ services:
           devices:
             - capabilities: ["gpu"]
   bsllmner:
-    image: shikeda/bsllmner:0.1.5
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: bsllmner
     depends_on:
       - ollama

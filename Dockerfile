@@ -1,13 +1,14 @@
 FROM python:3.10-alpine
 
-RUN pip3 install ollama pyyaml openai
-RUN apk update && \
-    apk add git
+# 依存ライブラリをインストール
+RUN pip3 install --no-cache-dir ollama pyyaml openai
 
-RUN mkdir /app
-WORKDIR /app
-RUN git clone https://github.com/sh-ikeda/bsllmner.git
+# アプリ配置
 WORKDIR /app/bsllmner
+COPY . /app/bsllmner
+
+# パッケージとしてインストール（モジュール参照を安定化）
+RUN pip3 install --no-cache-dir .
 
 ENTRYPOINT ["python3", "-m", "bsllmner"]
 CMD ["-h"]
