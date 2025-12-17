@@ -7,8 +7,5 @@ RUN pip3 install --no-cache-dir ollama pyyaml openai
 WORKDIR /app/bsllmner
 COPY . /app/bsllmner
 
-# パッケージとしてインストール（モジュール参照を安定化）
-RUN pip3 install --no-cache-dir .
-
 ENTRYPOINT ["python3", "-m", "bsllmner"]
 CMD ["-h"]
